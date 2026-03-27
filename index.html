@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iTECHLAB | Room Assignment v5</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --full: #ef4444;
+            --available: #10b981;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
+        body { background: var(--bg); padding: 20px; color: #1e293b; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; flex-wrap: wrap; gap: 20px; }
+        .header-actions { display: flex; align-items: center; gap: 15px; }
+
+        .sync-btn {
+            background: white; border: 1px solid #e2e8f0; padding: 10px 18px; border-radius: 12px;
+            font-weight: 700; font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 8px;
+            transition: all 0.2s; color: #475569;
+        }
+        .sync-btn.loading { opacity: 0.6; pointer-events: none; }
+
+        .batch-selector { display: flex; gap: 8px; background: #e2e8f0; padding: 5px; border-radius: 50px; }
+        .batch-btn { padding: 8px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: 700; font-size: 0.8rem; transition: 0.3s; }
+        .batch-btn.active { background: var(--primary); color: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+
+        /* Updated Grid for 4 Rooms */
+        .room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 40px; }
+        .room-card { background: var(--card); border-radius: 24px; padding: 25px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+        
+        .room-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+        .room-name { font-size: 1.1rem; font-weight: 800; color: #1e293b; }
+        .room-tag { font-size: 0.6rem; padding: 4px 10px; border-radius: 20px; font-weight: 800; text-transform: uppercase; }
+        .tag-avail { background: #dcfce7; color: #166534; }
+        .tag-full { background: #fee2e2; color: #991b1b; }
+        .tag-inactive { background: #f1f5f9; color: #94a3b8; }
+
+        .ws-indicator { font-size: 0.85rem; font-weight: 700; color: var(--primary); margin-bottom: 15px; display: flex; align-items: center; gap: 6px; }
+
+        .progress-container { background: #f1f5f9; height: 10px; border-radius: 10px; margin: 10px 0; overflow: hidden; }
+        .progress-bar { background: var(--primary); height: 100%; transition: width 0.5s ease; }
+        .occupancy-text { font-size: 0.8rem; font-weight: 600; color: #64748b; }
+
+        .search-section { background: white; padding: 20px; border-radius: 20px; margin-bottom: 20px; border: 1px solid #e2e8f0; }
+        #studentSearch { width: 100%; padding: 15px; border: 1.5px solid #e2e8f0; border-radius: 12px; font-size: 1rem; outline: none; }
+        
+        .assignment-table { width: 100%; border-collapse: collapse; background: white; border-radius: 20px; overflow: hidden; border: 1px solid #e2e8f0; }
+        .assignment-table th { background: #f8fafc; padding: 15px; text-align: left; font-size: 0.75rem; text-transform: uppercase; color: #64748b; }
+        .assignment-table td { padding: 15px; border-top: 1px solid #f1f5f9; font-size: 0.9rem; }
+        .room-badge { padding: 5px 12px; border-radius: 8px; font-weight: 700; font-size: 0.7rem; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <div>
+                <h1 style="font-weight: 800;">Real-time Room Assignments</h1>
+                <p id="lastSync" style="font-size: 0.85rem; color: #64748b;">Loading schedule...</p>
+            </div>
+            
+            <div class="header-actions">
+                <button id="syncBtn" class="sync-btn" onclick="fetchData(true)">
+                    <span id="syncText">Sync Now</span>
+                </button>
+                <div class="batch-selector">
+                    <button class="batch-btn active" onclick="switchBatch('batch1', this)">Batch 1</button>
+                    <button class="batch-btn" onclick="switchBatch('batch2', this)">Batch 2</button>
+                    <button class="batch-btn" onclick="switchBatch('batch3', this)">Batch 3</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="room-grid">
+            <div class="room-card" id="card-arduino">
+                <div class="room-header">
+                    <div class="room-name">Makerspace Lab</div>
+                    <span id="tag-arduino" class="room-tag tag-avail">Available</span>
+                </div>
+                <div class="ws-indicator">🤖 Arduino Workshop</div>
+                <div class="progress-container"><div id="bar-arduino" class="progress-bar" style="width: 0%"></div></div>
+                <div id="text-arduino" class="occupancy-text">0 / 48 Students</div>
+            </div>
+
+            <div class="room-card" id="card-mbot">
+                <div class="room-header">
+                    <div class="room-name">Function Room 1</div>
+                    <span id="tag-mbot" class="room-tag tag-avail">Available</span>
+                </div>
+                <div class="ws-indicator">🏎️ mBot2 Workshop</div>
+                <div class="progress-container"><div id="bar-mbot" class="progress-bar" style="width: 0%"></div></div>
+                <div id="text-mbot" class="occupancy-text">0 / 50 Students</div>
+            </div>
+
+            <div class="room-card" id="card-3d">
+                <div class="room-header">
+                    <div class="room-name">Function Room 2</div>
+                    <span id="tag-3d" class="room-tag tag-avail">Available</span>
+                </div>
+                <div class="ws-indicator">🛠️ 3D Printing (Bambu)</div>
+                <div class="progress-container"><div id="bar-3d" class="progress-bar" style="width: 0%"></div></div>
+                <div id="text-3d" class="occupancy-text">0 / 30 Students</div>
+            </div>
+
+            <div class="room-card" id="card-drone">
+                <div class="room-header">
+                    <div class="room-name">Training Hall</div>
+                    <span id="tag-drone" class="room-tag tag-avail">Available</span>
+                </div>
+                <div class="ws-indicator">🚁 Drone Workshop</div>
+                <div class="progress-container"><div id="bar-drone" class="progress-bar" style="width: 0%"></div></div>
+                <div id="text-drone" class="occupancy-text">0 / 40 Students</div>
+            </div>
+        </div>
+
+        <div class="search-section">
+            <input type="text" id="studentSearch" placeholder="🔍 Search participant name..." onkeyup="renderTable()">
+        </div>
+
+        <table class="assignment-table">
+            <thead>
+                <tr>
+                    <th>Participant Name</th>
+                    <th>Workshop Choice</th>
+                    <th>Assigned Room</th>
+                </tr>
+            </thead>
+            <tbody id="assignmentBody"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const BATCH_URLS = {
+            'batch1': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRbCq73MJLutPIdiSHMtsLgzvzE0QrPOJuHC2CPbb8B1H0Yi3Ewije4kqdwLEvR8Fc9X1mf0dqh4nAb/pub?gid=2111996398&single=true&output=csv',
+            'batch2': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRbCq73MJLutPIdiSHMtsLgzvzE0QrPOJuHC2CPbb8B1H0Yi3Ewije4kqdwLEvR8Fc9X1mf0dqh4nAb/pub?gid=1002419209&single=true&output=csv',
+            'batch3': 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRbCq73MJLutPIdiSHMtsLgzvzE0QrPOJuHC2CPbb8B1H0Yi3Ewije4kqdwLEvR8Fc9X1mf0dqh4nAb/pub?gid=801337014&single=true&output=csv'
+        };
+
+        let currentBatch = 'batch1';
+        let participants = [];
+
+        async function fetchData(isManual = false) {
+            const btn = document.getElementById('syncBtn');
+            if (isManual) btn.classList.add('loading');
+
+            try {
+                const response = await fetch(`${BATCH_URLS[currentBatch]}&t=${Date.now()}`);
+                const data = await response.text();
+                const rows = data.split(/\r?\n/).filter(r => r.trim() !== "").slice(1);
+                
+                const counts = { arduino: 0, mbot: 0, b3d: 0, drone: 0 };
+
+                participants = rows.map(row => {
+                    const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                    if (cols.length < 13) return null;
+
+                    const name = cols[0].replace(/"/g, '').trim();
+                    const topic = (cols[13] || "").toLowerCase(); 
+                    let assignedRoom = "Not Scheduled";
+
+                    // STRICT SEPARATION LOGIC
+                    if (topic.includes("arduino")) {
+                        assignedRoom = "Makerspace Lab";
+                        counts.arduino++;
+                    } else if (topic.includes("mbot")) {
+                        assignedRoom = "Function Room 1";
+                        counts.mbot++;
+                    } else if (topic.includes("bambu") || topic.includes("3d printing")) {
+                        assignedRoom = "Function Room 2";
+                        counts.b3d++;
+                    } else if (topic.includes("drone")) {
+                        assignedRoom = "Training Hall";
+                        counts.drone++;
+                    }
+
+                    return { name, topic: cols[13], assignedRoom };
+                }).filter(p => p !== null && p.name !== "FULL NAME");
+
+                updateUI(counts);
+                renderTable();
+                document.getElementById('lastSync').innerText = "Last Sync: " + new Date().toLocaleTimeString();
+                if (isManual) btn.classList.remove('loading');
+            } catch (e) { 
+                console.error("Sync Error", e);
+                if(isManual) btn.classList.remove('loading');
+            }
+        }
+
+        function updateUI(counts) {
+            const setRoom = (id, count, cap, isActive) => {
+                const card = document.getElementById(`card-${id}`);
+                const tag = document.getElementById(`tag-${id}`);
+                const bar = document.getElementById(`bar-${id}`);
+                const txt = document.getElementById(`text-${id}`);
+
+                if (!isActive) {
+                    tag.innerText = "Closed";
+                    tag.className = "room-tag tag-inactive";
+                    bar.style.width = "0%";
+                    txt.innerText = "Not available this week";
+                    card.style.opacity = "0.5";
+                    return;
+                }
+
+                card.style.opacity = "1";
+                bar.style.width = Math.min((count/cap*100), 100) + "%";
+                txt.innerText = `${count} / ${cap} Students`;
+                tag.innerText = count >= cap ? "FULL" : "Available";
+                tag.className = count >= cap ? "room-tag tag-full" : "room-tag tag-avail";
+                bar.style.background = count > cap ? "var(--full)" : "var(--primary)";
+            };
+
+            // Schedule Logic per Batch
+            setRoom('arduino', counts.arduino, 48, true);
+            setRoom('mbot', counts.mbot, 50, true);
+            setRoom('3d', counts.b3d, 30, currentBatch !== 'batch1');
+            setRoom('drone', counts.drone, 40, currentBatch === 'batch3');
+        }
+
+        function renderTable() {
+            const query = document.getElementById('studentSearch').value.toLowerCase();
+            const body = document.getElementById('assignmentBody');
+            body.innerHTML = participants
+                .filter(p => p.name.toLowerCase().includes(query))
+                .map(p => `
+                    <tr>
+                        <td style="font-weight:700">${p.name}</td>
+                        <td style="color:#64748b; font-size: 0.8rem;">${p.topic}</td>
+                        <td><span class="room-badge" style="background:#eef2ff; color:var(--primary)">${p.assignedRoom}</span></td>
+                    </tr>
+                `).join('');
+        }
+
+        function switchBatch(batch, btn) {
+            currentBatch = batch;
+            document.querySelectorAll('.batch-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            fetchData(true);
+        }
+
+        setInterval(() => fetchData(false), 30000);
+        window.onload = () => fetchData(false);
+    </script>
+</body>
+</html>
