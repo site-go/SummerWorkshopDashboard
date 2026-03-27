@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iTECHLAB | Room Assignment v7</title>
+    <title>iTECHLAB | Room Assignment v8 (Smart Swap)</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -34,7 +34,7 @@
         .batch-btn.active { background: var(--primary); color: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
 
         .room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 40px; }
-        .room-card { background: var(--card); border-radius: 24px; padding: 25px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+        .room-card { background: var(--card); border-radius: 24px; padding: 25px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; transition: 0.3s ease; }
         
         .room-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
         .room-name { font-size: 1.2rem; font-weight: 800; color: #1e293b; }
@@ -80,9 +80,9 @@
         </header>
 
         <div class="room-grid">
-            <div class="room-card">
+            <div class="room-card" id="card-arduino">
                 <div class="room-header">
-                    <div class="room-name">Makerspace Lab</div>
+                    <div class="room-name" id="name-arduino">Makerspace Lab</div>
                     <span id="tag-arduino" class="room-tag tag-avail">Available</span>
                 </div>
                 <div class="ws-indicator">🤖 Arduino Workshop</div>
@@ -90,9 +90,9 @@
                 <div id="text-arduino" class="occupancy-text">0 / 48 Students</div>
             </div>
 
-            <div class="room-card">
+            <div class="room-card" id="card-mbot">
                 <div class="room-header">
-                    <div class="room-name">Function Room 1</div>
+                    <div class="room-name" id="name-mbot">Function Room 1</div>
                     <span id="tag-mbot" class="room-tag tag-avail">Available</span>
                 </div>
                 <div class="ws-indicator">🏎️ mBot2 Workshop</div>
@@ -147,43 +147,45 @@
                 const rows = data.split(/\r?\n/).filter(r => r.trim() !== "").slice(1);
                 
                 const counts = { arduino: 0, mbot: 0, dynamic: 0 };
+                
+                // First pass: just count for swapping logic
+                rows.forEach(row => {
+                    const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                    if (cols.length < 14) return;
+                    const topic = (cols[13] || "").toLowerCase();
+                    if (topic.includes("arduino")) counts.arduino++;
+                    if (topic.includes("mbot")) counts.mbot++;
+                    if ((topic.includes("bambu") && currentBatch === 'batch2') || (topic.includes("drone") && currentBatch === 'batch3')) counts.dynamic++;
+                });
+
+                // Assign Capacities & Room Names based on who is larger
+                let ardCap, mbotCap, ardRoom, mbotRoom;
+                if (counts.arduino > counts.mbot) {
+                    ardCap = 50; mbotCap = 48;
+                    ardRoom = "Function Room 1"; mbotRoom = "Makerspace Lab";
+                } else {
+                    ardCap = 48; mbotCap = 50;
+                    ardRoom = "Makerspace Lab"; mbotRoom = "Function Room 1";
+                }
 
                 participants = rows.map(row => {
                     const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
                     if (cols.length < 13) return null;
-
                     const name = cols[0].replace(/"/g, '').trim();
                     const topic = (cols[13] || "").toLowerCase(); 
                     let assignedRoom = "Unassigned";
 
-                    // LOGIC: 
-                    // Arduino -> Makerspace
-                    // mBot -> Func Room 1
-                    // Batch 2 Bambu -> Func Room 2
-                    // Batch 3 Drone -> Func Room 2 (Bambu Closed)
-                    
-                    if (topic.includes("arduino")) {
-                        assignedRoom = "Makerspace Lab";
-                        counts.arduino++;
-                    } else if (topic.includes("mbot")) {
-                        assignedRoom = "Function Room 1";
-                        counts.mbot++;
-                    } else if ((topic.includes("bambu") || topic.includes("3d printing")) && currentBatch === 'batch2') {
-                        assignedRoom = "Function Room 2";
-                        counts.dynamic++;
-                    } else if (topic.includes("drone") && currentBatch === 'batch3') {
-                        assignedRoom = "Function Room 2";
-                        counts.dynamic++;
-                    } else if (topic.includes("bambu") && currentBatch === 'batch3') {
-                        assignedRoom = "❌ BAMBU CLOSED (B3)";
-                    } else if (topic.includes("drone") && currentBatch !== 'batch3') {
-                        assignedRoom = "❌ DRONE CLOSED";
-                    }
+                    if (topic.includes("arduino")) assignedRoom = ardRoom;
+                    else if (topic.includes("mbot")) assignedRoom = mbotRoom;
+                    else if ((topic.includes("bambu") || topic.includes("3d printing")) && currentBatch === 'batch2') assignedRoom = "Function Room 2";
+                    else if (topic.includes("drone") && currentBatch === 'batch3') assignedRoom = "Function Room 2";
+                    else if (topic.includes("bambu") && currentBatch === 'batch3') assignedRoom = "❌ BAMBU CLOSED (B3)";
+                    else if (topic.includes("drone") && currentBatch !== 'batch3') assignedRoom = "❌ DRONE CLOSED";
 
                     return { name, topic: cols[13], assignedRoom };
                 }).filter(p => p !== null && p.name !== "FULL NAME");
 
-                updateUI(counts);
+                updateUI(counts, ardRoom, mbotRoom, ardCap, mbotCap);
                 renderTable();
                 document.getElementById('lastSync').innerText = "Last Sync: " + new Date().toLocaleTimeString();
                 if (isManual) btn.classList.remove('loading');
@@ -193,40 +195,47 @@
             }
         }
 
-        function updateUI(counts) {
-            // Room UI updates
-            const updateRoom = (id, count, cap, tagId, label = null) => {
-                const bar = document.getElementById(`bar-${id}`);
-                const tag = document.getElementById(tagId);
-                const txt = document.getElementById(`text-${id}`);
-                
-                bar.style.width = Math.min((count/cap*100), 100) + "%";
-                txt.innerText = `${count} / ${cap} Students`;
-                
-                if (count === 0) {
-                    tag.innerText = "Empty";
-                    tag.className = "room-tag tag-closed";
-                } else if (count >= cap) {
-                    tag.innerText = "FULL";
-                    tag.className = "room-tag tag-full";
-                    bar.style.background = "var(--full)";
-                } else {
-                    tag.innerText = "Available";
-                    tag.className = "room-tag tag-avail";
-                    bar.style.background = "var(--primary)";
-                }
+        function updateUI(counts, ardRoom, mbotRoom, ardCap, mbotCap) {
+            // Update Arduino Card
+            document.getElementById('name-arduino').innerText = ardRoom;
+            const barArd = document.getElementById('bar-arduino');
+            barArd.style.width = Math.min((counts.arduino/ardCap*100), 100) + "%";
+            document.getElementById('text-arduino').innerText = `${counts.arduino} / ${ardCap} Students`;
+            const tagArd = document.getElementById('tag-arduino');
+            tagArd.innerText = counts.arduino >= ardCap ? "FULL" : "Available";
+            tagArd.className = "room-tag " + (counts.arduino >= ardCap ? "tag-full" : "tag-avail");
+            barArd.style.background = counts.arduino > ardCap ? "var(--full)" : "var(--primary)";
 
-                if (label) {
-                    const labelEl = document.getElementById('label-dynamic');
-                    if (currentBatch === 'batch1') labelEl.innerText = "🛌 No Active Workshop";
-                    if (currentBatch === 'batch2') labelEl.innerText = "🛠️ 3D Printing (Bambu)";
-                    if (currentBatch === 'batch3') labelEl.innerText = "🚁 Drone Workshop";
-                }
-            };
+            // Update mBot Card
+            document.getElementById('name-mbot').innerText = mbotRoom;
+            const barMbot = document.getElementById('bar-mbot');
+            barMbot.style.width = Math.min((counts.mbot/mbotCap*100), 100) + "%";
+            document.getElementById('text-mbot').innerText = `${counts.mbot} / ${mbotCap} Students`;
+            const tagMbot = document.getElementById('tag-mbot');
+            tagMbot.innerText = counts.mbot >= mbotCap ? "FULL" : "Available";
+            tagMbot.className = "room-tag " + (counts.mbot >= mbotCap ? "tag-full" : "tag-avail");
+            barMbot.style.background = counts.mbot > mbotCap ? "var(--full)" : "var(--primary)";
 
-            updateRoom('arduino', counts.arduino, 48, 'tag-arduino');
-            updateRoom('mbot', counts.mbot, 50, 'tag-mbot');
-            updateRoom('dynamic', counts.dynamic, 30, 'tag-dynamic', true);
+            // Update Dynamic Room
+            const f2Cap = 30;
+            const barDyn = document.getElementById('bar-dynamic');
+            const tagDyn = document.getElementById('tag-dynamic');
+            const txtDyn = document.getElementById('text-dynamic');
+            const lblDyn = document.getElementById('label-dynamic');
+            
+            barDyn.style.width = Math.min((counts.dynamic/f2Cap*100), 100) + "%";
+            txtDyn.innerText = `${counts.dynamic} / ${f2Cap} Students`;
+            
+            if (currentBatch === 'batch1') {
+                lblDyn.innerText = "🛌 No Active Workshop";
+                tagDyn.innerText = "Closed";
+                tagDyn.className = "room-tag tag-closed";
+            } else {
+                lblDyn.innerText = currentBatch === 'batch2' ? "🛠️ 3D Printing (Bambu)" : "🚁 Drone Workshop";
+                tagDyn.innerText = counts.dynamic >= f2Cap ? "FULL" : "Available";
+                tagDyn.className = counts.dynamic >= f2Cap ? "room-tag tag-full" : "room-tag tag-avail";
+                barDyn.style.background = counts.dynamic > f2Cap ? "var(--full)" : "var(--primary)";
+            }
         }
 
         function renderTable() {
