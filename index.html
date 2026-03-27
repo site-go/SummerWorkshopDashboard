@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iTECHLAB | Room Assignment v5</title>
+    <title>iTECHLAB | Room Assignment v6</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -12,6 +12,7 @@
             --card: #ffffff;
             --full: #ef4444;
             --available: #10b981;
+            --closed: #94a3b8;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -32,16 +33,16 @@
         .batch-btn { padding: 8px 24px; border-radius: 50px; border: none; cursor: pointer; font-weight: 700; font-size: 0.8rem; transition: 0.3s; }
         .batch-btn.active { background: var(--primary); color: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
 
-        /* Updated Grid for 4 Rooms */
         .room-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 40px; }
-        .room-card { background: var(--card); border-radius: 24px; padding: 25px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; }
+        .room-card { background: var(--card); border-radius: 24px; padding: 25px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; transition: opacity 0.4s ease; }
+        .room-card.is-closed { opacity: 0.4; pointer-events: none; filter: grayscale(1); }
         
         .room-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
         .room-name { font-size: 1.1rem; font-weight: 800; color: #1e293b; }
         .room-tag { font-size: 0.6rem; padding: 4px 10px; border-radius: 20px; font-weight: 800; text-transform: uppercase; }
         .tag-avail { background: #dcfce7; color: #166534; }
         .tag-full { background: #fee2e2; color: #991b1b; }
-        .tag-inactive { background: #f1f5f9; color: #94a3b8; }
+        .tag-closed { background: #f1f5f9; color: var(--closed); }
 
         .ws-indicator { font-size: 0.85rem; font-weight: 700; color: var(--primary); margin-bottom: 15px; display: flex; align-items: center; gap: 6px; }
 
@@ -112,7 +113,7 @@
 
             <div class="room-card" id="card-drone">
                 <div class="room-header">
-                    <div class="room-name">Function Room 3</div>
+                    <div class="room-name">Training Hall</div>
                     <span id="tag-drone" class="room-tag tag-avail">Available</span>
                 </div>
                 <div class="ws-indicator">🚁 Drone Workshop</div>
@@ -166,19 +167,21 @@
                     const topic = (cols[13] || "").toLowerCase(); 
                     let assignedRoom = "Not Scheduled";
 
-                    // STRICT SEPARATION LOGIC
+                    // LOGIC UPDATED: Bambu is CLOSED in Batch 3
                     if (topic.includes("arduino")) {
                         assignedRoom = "Makerspace Lab";
                         counts.arduino++;
                     } else if (topic.includes("mbot")) {
                         assignedRoom = "Function Room 1";
                         counts.mbot++;
-                    } else if (topic.includes("bambu") || topic.includes("3d printing")) {
+                    } else if ((topic.includes("bambu") || topic.includes("3d printing")) && currentBatch !== 'batch3') {
                         assignedRoom = "Function Room 2";
                         counts.b3d++;
                     } else if (topic.includes("drone")) {
                         assignedRoom = "Training Hall";
                         counts.drone++;
+                    } else if (topic.includes("bambu") && currentBatch === 'batch3') {
+                        assignedRoom = "⚠️ ROOM CLOSED";
                     }
 
                     return { name, topic: cols[13], assignedRoom };
@@ -203,14 +206,14 @@
 
                 if (!isActive) {
                     tag.innerText = "Closed";
-                    tag.className = "room-tag tag-inactive";
+                    tag.className = "room-tag tag-closed";
                     bar.style.width = "0%";
-                    txt.innerText = "Not available this week";
-                    card.style.opacity = "0.5";
+                    txt.innerText = "Workshop Not Available";
+                    card.classList.add('is-closed');
                     return;
                 }
 
-                card.style.opacity = "1";
+                card.classList.remove('is-closed');
                 bar.style.width = Math.min((count/cap*100), 100) + "%";
                 txt.innerText = `${count} / ${cap} Students`;
                 tag.innerText = count >= cap ? "FULL" : "Available";
@@ -218,10 +221,14 @@
                 bar.style.background = count > cap ? "var(--full)" : "var(--primary)";
             };
 
-            // Schedule Logic per Batch
+            // Schedule Config
             setRoom('arduino', counts.arduino, 48, true);
             setRoom('mbot', counts.mbot, 50, true);
-            setRoom('3d', counts.b3d, 30, currentBatch !== 'batch1');
+            
+            // NEW: Bambu only active in Batch 2 (Closed in 1 and 3)
+            setRoom('3d', counts.b3d, 30, currentBatch === 'batch2'); 
+            
+            // Drone only active in Batch 3
             setRoom('drone', counts.drone, 40, currentBatch === 'batch3');
         }
 
@@ -234,7 +241,7 @@
                     <tr>
                         <td style="font-weight:700">${p.name}</td>
                         <td style="color:#64748b; font-size: 0.8rem;">${p.topic}</td>
-                        <td><span class="room-badge" style="background:#eef2ff; color:var(--primary)">${p.assignedRoom}</span></td>
+                        <td><span class="room-badge" style="background:${p.assignedRoom.includes('CLOSED') ? '#fee2e2' : '#eef2ff'}; color:${p.assignedRoom.includes('CLOSED') ? '#991b1b' : 'var(--primary)'}">${p.assignedRoom}</span></td>
                     </tr>
                 `).join('');
         }
